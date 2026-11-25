@@ -3,116 +3,155 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#2f6bff">
+<meta name="description" content="전국 고속도로 휴게소 주유 가격과 음식을 지도에서 한눈에">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="휴게소 주유">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>휴게소 주유 지도</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
-/* VOICE: calm, quick, glanceable — a driver's tool
-   IDEA: a highway map where each rest area wears its own price tag
-   PICTURE: full-screen map with price pills; bottom sheet for details
-   COLOUR and TYPE: white glass on map, ink text, blue #2f6bff accent, green for cheapest; Pretendard
-   LAYOUT: map fills screen, floating search on top, draggable sheet at bottom */
-:root{color-scheme:light dark;
---bg:light-dark(#ffffff,#16181d);--bg2:light-dark(#f3f4f6,#1f2228);--ink:light-dark(#111318,#f1f2f4);--sub:light-dark(#6b7280,#9aa1ad);
---line:light-dark(#e7e8eb,#2a2e36);--acc:#2f6bff;--cheap:#12b76a;--warn:#f04438;--glass:light-dark(rgba(255,255,255,.92),rgba(22,24,29,.9));
---sh:0 8px 30px rgba(0,0,0,.14)}
+/* VOICE: calm, big, plain words — usable by a first-time or older driver
+   IDEA: a highway map where every rest area wears its own price tag
+   PICTURE: full-screen map with price tags and a large "내 위치" marker; sheet below
+   COLOUR and TYPE: white cards, near-black ink, blue #2f6bff for action, green #0e9f5b for cheapest; Pretendard, 18px base
+   LAYOUT: search + fuel buttons on top, big action buttons above a bottom sheet */
+:root{--fs:18px;--bg:#fff;--bg2:#f2f4f7;--ink:#101318;--sub:#5b6472;--line:#e4e7ec;--acc:#2f6bff;--cheap:#0e9f5b;--warn:#d92d20;--sh:0 6px 24px rgba(16,19,24,.16)}
+:root.big{--fs:21px}
 *{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+html{font-size:var(--fs)}
 html,body{margin:0;height:100%;overflow:hidden}
-body{background:var(--bg);color:var(--ink);font:16px/1.5 "Pretendard Variable",Pretendard,-apple-system,system-ui,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;letter-spacing:-.01em}
-button,input,select{font:inherit;color:inherit}
-#map{position:fixed;inset:0;background:var(--bg2)}
-.top{position:fixed;left:0;right:0;top:0;z-index:1000;padding:calc(env(safe-area-inset-top) + 12px) 12px 0;display:grid;gap:8px;pointer-events:none}
+body{background:var(--bg);color:var(--ink);font:1rem/1.5 "Pretendard Variable",Pretendard,-apple-system,system-ui,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;letter-spacing:-.01em}
+button,input,select,a{font:inherit;color:inherit}
+button{cursor:pointer}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+#map{position:fixed;inset:0;background:#eef0f3}
+.top{position:fixed;left:0;right:0;top:0;z-index:20;padding:calc(env(safe-area-inset-top) + 10px) 10px 0;display:grid;gap:8px;pointer-events:none}
 .top>*{pointer-events:auto}
-.search{display:flex;align-items:center;gap:8px;background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:16px;box-shadow:var(--sh);padding:0 6px 0 14px;height:52px}
-.search input{flex:1;border:0;background:none;outline:none;font-size:16px;height:100%}
-.search svg{flex:none;opacity:.5}
-.ibtn{flex:none;width:44px;height:44px;border:0;border-radius:12px;background:none;display:grid;place-items:center;cursor:pointer}
-.ibtn:active{background:var(--bg2)}
-.ibtn.spin svg{animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
-.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.chips::-webkit-scrollbar{display:none}
-.chip{flex:none;height:38px;padding:0 14px;border-radius:999px;border:0;background:var(--glass);backdrop-filter:blur(14px);box-shadow:0 2px 10px rgba(0,0,0,.1);font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap}
-.chip[aria-pressed=true]{background:var(--ink);color:var(--bg)}
-select.chip{appearance:none;padding-right:28px;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 15px) 17px,calc(100% - 10px) 17px;background-size:5px 5px;background-repeat:no-repeat}
-.fab{position:fixed;right:12px;z-index:1000;width:48px;height:48px;border-radius:14px;border:0;background:var(--glass);box-shadow:var(--sh);display:grid;place-items:center;cursor:pointer;transition:bottom .3s}
-.fab.on{color:var(--acc)}
-/* map markers */
-.mk{position:relative}
-.mk .dot{position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;background:var(--acc);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35)}
-.mk.nf .dot{background:#98a2b3;width:10px;height:10px;left:-5px;top:-5px}
+.search{display:flex;align-items:center;gap:4px;background:var(--bg);border-radius:16px;box-shadow:var(--sh);padding:0 4px 0 14px;height:56px}
+.search input{flex:1;border:0;background:none;outline:none;font-size:1rem;height:100%}
+.search input::placeholder{color:#8a93a1}
+.tbtn{flex:none;min-width:48px;height:48px;border:0;border-radius:12px;background:none;display:grid;place-items:center;font-weight:800;font-size:.85rem;padding:0 6px}
+.tbtn:active{background:var(--bg2)}
+.tbtn.spin svg{animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.fuelsel{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.fbtn{height:50px;border-radius:14px;border:2px solid transparent;background:var(--bg);box-shadow:0 2px 10px rgba(0,0,0,.12);font-weight:800;font-size:1rem}
+.fbtn[aria-pressed=true]{background:var(--ink);color:#fff}
+.routebar{display:flex;gap:6px}
+.routebar select{flex:1;height:44px;border-radius:12px;border:0;background:var(--bg);box-shadow:0 2px 10px rgba(0,0,0,.12);padding:0 12px;font-size:.9rem;font-weight:600;appearance:none;background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);background-position:calc(100% - 18px) 19px,calc(100% - 12px) 19px;background-size:6px 6px;background-repeat:no-repeat}
+.legend{flex:none;display:flex;align-items:center;gap:6px;height:44px;padding:0 12px;border-radius:12px;background:var(--bg);box-shadow:0 2px 10px rgba(0,0,0,.12);font-size:.78rem;font-weight:700;white-space:nowrap}
+.legend i{width:14px;height:14px;border-radius:50%;background:var(--cheap);display:inline-block}
+.acts{position:fixed;left:10px;right:10px;z-index:21;display:flex;gap:8px;justify-content:flex-end;transition:bottom .28s;pointer-events:none}
+.acts>*{pointer-events:auto}
+.abtn{display:flex;align-items:center;gap:8px;height:54px;padding:0 18px;border:0;border-radius:27px;background:var(--bg);box-shadow:var(--sh);font-weight:800;font-size:.95rem;white-space:nowrap}
+.abtn.p{background:var(--acc);color:#fff}
+.abtn.on{background:var(--warn);color:#fff}
+/* markers */
+.mk{width:0;height:0;cursor:pointer}
+.mk .dot{position:absolute;left:-8px;top:-8px;width:16px;height:16px;border-radius:50%;background:var(--acc);border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.mk.nf .dot{background:#8a93a1;width:12px;height:12px;left:-6px;top:-6px;border-width:2px}
 .mk.cheap .dot{background:var(--cheap)}
-.mk .pill{position:absolute;left:0;bottom:2px;transform:translateX(-50%);white-space:nowrap;background:var(--bg);color:var(--ink);font-weight:700;font-size:13px;padding:4px 9px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.25);font-variant-numeric:tabular-nums;display:none}
-.mk .pill:after{content:"";position:absolute;left:50%;bottom:-5px;margin-left:-5px;border:5px solid transparent;border-bottom:0;border-top-color:var(--bg)}
+.mk .pill{position:absolute;left:0;bottom:4px;transform:translateX(-50%);white-space:nowrap;background:#fff;color:var(--ink);font-weight:800;font-size:15px;padding:5px 10px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.3);font-variant-numeric:tabular-nums;display:none}
+.mk .pill:after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-bottom:0;border-top-color:#fff}
 .mk.cheap .pill{background:var(--cheap);color:#fff}.mk.cheap .pill:after{border-top-color:var(--cheap)}
 .mk.sel .pill{background:var(--acc);color:#fff;display:block}.mk.sel .pill:after{border-top-color:var(--acc)}
-.mk.sel .dot{background:var(--acc);transform:scale(1.3)}
 .zoomed .mk:not(.nf) .pill{display:block}.zoomed .mk:not(.nf) .dot{display:none}.zoomed .mk.sel .dot{display:block}
-.zoomed .mk.nf .dot{display:block}
-.mk{cursor:pointer;width:0;height:0}
-.me{width:18px;height:18px;border-radius:50%;background:var(--acc);border:3px solid #fff;box-shadow:0 0 0 6px color-mix(in srgb,var(--acc) 25%,transparent),0 2px 6px rgba(0,0,0,.3)}
-.maplibregl-ctrl-attrib{font-size:10px}
-.maplibregl-ctrl-bottom-right{bottom:var(--sheetH,34vh);transition:bottom .28s}
+/* my location: large and obvious */
+.me{width:0;height:0;pointer-events:none}
+.me .halo{position:absolute;left:-36px;top:-36px;width:72px;height:72px;border-radius:50%;background:rgba(47,107,255,.22);animation:pulse 2s ease-out infinite}
+.me .core{position:absolute;left:-17px;top:-17px;width:34px;height:34px;border-radius:50%;background:var(--acc);border:5px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.45);display:grid;place-items:center}
+.me .core svg{display:none}
+.me.dir .core svg{display:block}
+.me .lbl{position:absolute;left:0;top:-58px;transform:translateX(-50%);background:var(--ink);color:#fff;font-weight:800;font-size:14px;padding:4px 10px;border-radius:9px;white-space:nowrap}
+@keyframes pulse{0%{transform:scale(.6);opacity:1}100%{transform:scale(1.5);opacity:0}}
+@media(prefers-reduced-motion:reduce){.me .halo{animation:none}.sheet,.acts{transition:none}}
 /* sheet */
-.sheet{position:fixed;left:0;right:0;bottom:0;z-index:1001;background:var(--bg);border-radius:22px 22px 0 0;box-shadow:0 -6px 30px rgba(0,0,0,.16);display:flex;flex-direction:column;height:var(--h,34vh);transition:height .28s cubic-bezier(.2,.8,.2,1);max-width:640px;margin:0 auto;padding-bottom:env(safe-area-inset-bottom)}
-@media(prefers-reduced-motion:reduce){.sheet,.fab{transition:none}}
-.grab{flex:none;padding:10px 0 4px;display:grid;place-items:center;cursor:grab;touch-action:none;border:0;background:none;width:100%}
-.grab i{width:40px;height:5px;border-radius:3px;background:var(--line)}
-.head{flex:none;padding:4px 20px 10px}
-.head h1{font-size:20px;line-height:1.3;margin:0;font-weight:800;letter-spacing:-.02em}
-.meta{font-size:13px;color:var(--sub);display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
-.stat{background:var(--bg2);border-radius:14px;padding:10px 12px}
-.stat b{display:block;font-size:18px;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:800}
-.stat span{font-size:12px;color:var(--sub)}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:22;background:var(--bg);border-radius:22px 22px 0 0;box-shadow:0 -6px 30px rgba(0,0,0,.18);display:flex;flex-direction:column;height:var(--h,40vh);transition:height .28s cubic-bezier(.2,.8,.2,1);max-width:680px;margin:0 auto;padding-bottom:env(safe-area-inset-bottom)}
+.grab{flex:none;display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:36px;border:0;background:none;color:var(--sub);font-size:.75rem;font-weight:700;touch-action:none}
+.grab i{width:44px;height:5px;border-radius:3px;background:#cfd4dc}
+.head{flex:none;padding:0 18px 10px}
+.head h1{font-size:1.25rem;line-height:1.3;margin:0;font-weight:800}
+.meta{font-size:.8rem;color:var(--sub);display:flex;gap:6px;flex-wrap:wrap}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+.stat{background:var(--bg2);border-radius:14px;padding:8px 12px}
+.stat b{display:block;font-size:1.1rem;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:800}
+.stat span{font-size:.75rem;color:var(--sub);font-weight:600}
 .stat.g b{color:var(--cheap)}
-.sorts{display:flex;gap:6px;margin-top:12px}
-.sorts .chip{box-shadow:none;background:var(--bg2);height:34px;font-size:13px}
-.sorts .chip[aria-pressed=true]{background:var(--ink);color:var(--bg)}
-.body{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:0 12px 20px}
-.row{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;background:none;padding:12px 8px;border-bottom:1px solid var(--line);cursor:pointer;min-height:64px}
+.sorts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px}
+.sorts button{height:46px;border-radius:12px;border:0;background:var(--bg2);font-weight:700;font-size:.9rem}
+.sorts button[aria-pressed=true]{background:var(--ink);color:#fff}
+.body{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:0 10px 24px}
+.row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:none;padding:14px 8px;border-bottom:1px solid var(--line);min-height:76px}
 .row:active{background:var(--bg2)}
 .row .nm{flex:1}
-.row .nm b{display:block;font-weight:700;font-size:16px;line-height:1.35}
-.row .nm small{color:var(--sub);font-size:13px}
+.row .nm b{display:block;font-weight:800;font-size:1.05rem;line-height:1.35}
+.row .nm small{color:var(--sub);font-size:.8rem}
 .pr{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-.pr b{font-size:17px;font-weight:800}.pr small{display:block;color:var(--sub);font-size:12px}
+.pr b{font-size:1.2rem;font-weight:800}.pr small{display:block;color:var(--sub);font-size:.75rem}
 .pr.cheap b{color:var(--cheap)}
-.badge{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;background:var(--bg2);color:var(--sub);margin-left:4px;vertical-align:2px}
-.badge.g{background:color-mix(in srgb,var(--cheap) 15%,transparent);color:var(--cheap)}
-.badge.b{background:color-mix(in srgb,var(--acc) 14%,transparent);color:var(--acc)}
-.badge.o{background:color-mix(in srgb,#f79009 16%,transparent);color:#dc6803}
-.empty,.err{padding:28px 12px;text-align:center;color:var(--sub);font-size:15px}
-.err{color:var(--warn)}
-.banner{margin:0 8px 8px;padding:10px 14px;border-radius:12px;background:color-mix(in srgb,var(--warn) 12%,transparent);color:var(--warn);font-size:14px;font-weight:600}
+.badge{display:inline-block;font-size:.7rem;font-weight:800;padding:2px 7px;border-radius:7px;background:var(--bg2);color:var(--sub);margin-left:5px;vertical-align:2px;white-space:nowrap}
+.badge.g{background:#e3f6ec;color:var(--cheap)}.badge.b{background:#e6eeff;color:var(--acc)}.badge.o{background:#fff1e0;color:#c4540a}
+.empty,.err{padding:24px 12px;text-align:center;color:var(--sub);font-size:.9rem}
+.err{color:var(--warn);font-weight:700}
+.banner{margin:4px 8px 8px;padding:12px 14px;border-radius:12px;background:#fdecea;color:var(--warn);font-size:.85rem;font-weight:700}
+.info{margin:4px 8px 8px;padding:12px 14px;border-radius:12px;background:#e6eeff;color:#1d3fa8;font-size:.85rem;font-weight:600}
 /* detail */
-.back{display:inline-flex;align-items:center;gap:4px;border:0;background:none;color:var(--sub);font-size:14px;padding:6px 0;cursor:pointer;min-height:36px}
-.fuels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:12px 8px 6px}
-.fuel{border:1px solid var(--line);border-radius:14px;padding:10px 12px}
-.fuel span{font-size:12px;color:var(--sub);display:block}
-.fuel b{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.back{display:inline-flex;align-items:center;gap:4px;border:0;background:var(--bg2);border-radius:12px;font-weight:700;font-size:.9rem;padding:0 14px;height:44px;margin-bottom:8px}
+.fuels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:6px 8px}
+.fuel{border:2px solid var(--line);border-radius:14px;padding:10px 10px}
+.fuel span{font-size:.75rem;color:var(--sub);display:block;font-weight:700}
+.fuel b{font-size:1.2rem;font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
 .fuel.cheap{border-color:var(--cheap)}.fuel.cheap b{color:var(--cheap)}
-.fuel.na b{font-size:15px;color:var(--sub);font-weight:600}
-.fuel.bad b{font-size:15px;color:var(--warn)}
-.sec{margin:18px 8px 0}
-.sec h2{font-size:15px;font-weight:800;margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline}
-.sec h2 small{font-weight:500;color:var(--sub);font-size:12px}
+.fuel.na b{font-size:.9rem;color:var(--sub)}.fuel.bad b{font-size:.9rem;color:var(--warn)}
+.btns{display:grid;gap:8px;margin:12px 8px 0}
+.btns.two{grid-template-columns:1fr 1fr}
+.big{display:flex;align-items:center;justify-content:center;gap:8px;min-height:56px;border-radius:14px;background:var(--bg2);text-decoration:none;color:var(--ink);font-weight:800;font-size:1rem;border:0;text-align:center;padding:6px 10px}
+.big.tmap{background:#e8233f;color:#fff}
+.big.p{background:var(--acc);color:#fff}
+.big.dis{color:var(--sub);font-weight:600;font-size:.85rem}
+.sec{margin:20px 8px 0}
+.sec h2{font-size:1.05rem;font-weight:800;margin:0 0 6px;display:flex;justify-content:space-between;align-items:baseline}
+.sec h2 small{font-weight:600;color:var(--sub);font-size:.75rem}
 .tags{display:flex;flex-wrap:wrap;gap:6px}
-.tag{font-size:13px;padding:5px 10px;border-radius:999px;background:var(--bg2)}
-.menu{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.tag{font-size:.85rem;padding:6px 12px;border-radius:999px;background:var(--bg2);font-weight:600}
+.menu{display:flex;justify-content:space-between;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
 .menu:last-child{border:0}
-.menu b{font-weight:600;font-size:15px}
-.menu p{margin:2px 0 0;font-size:13px;color:var(--sub);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.menu .pr{font-weight:700;font-size:15px}
-.acts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 8px 0}
-.act{display:flex;align-items:center;justify-content:center;gap:6px;height:48px;border-radius:14px;background:var(--bg2);text-decoration:none;color:var(--ink);font-weight:700;font-size:15px}
-.act.p{background:var(--acc);color:#fff}
-.kv{font-size:14px;color:var(--sub);line-height:1.7}
-.note{font-size:12px;color:var(--sub);margin:16px 8px 0;line-height:1.5}
-.more{width:100%;height:44px;border:0;border-radius:12px;background:var(--bg2);font-weight:600;font-size:14px;margin-top:8px;cursor:pointer}
-:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.menu b{font-weight:700;font-size:.95rem}
+.menu p{margin:2px 0 0;font-size:.78rem;color:var(--sub);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.menu .pr{font-weight:800;font-size:.95rem}
+.kv{font-size:.9rem;color:var(--sub);line-height:1.6}
+.note{font-size:.75rem;color:var(--sub);margin:16px 8px 0;line-height:1.5}
+.note a{color:inherit}
+.more{width:100%;height:52px;border:0;border-radius:12px;background:var(--bg2);font-weight:700;font-size:.9rem;margin-top:8px}
+/* driving */
+.drv{margin:0 8px 10px;padding:14px;border-radius:18px;border:2px solid var(--line)}
+.drv.first{border-color:var(--acc);background:#f4f7ff}
+.drv .t{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.drv .t b{font-size:1.15rem;font-weight:800}
+.drv .km{font-size:1.4rem;font-weight:900;color:var(--acc);white-space:nowrap;font-variant-numeric:tabular-nums}
+.drv .p2{display:flex;justify-content:space-between;align-items:baseline;margin-top:4px;color:var(--sub);font-size:.85rem}
+.drv .p2 b{font-size:1.35rem;color:var(--ink);font-weight:900;font-variant-numeric:tabular-nums}
+.drv.cheapest .p2 b{color:var(--cheap)}
+.drv .btns{margin:10px 0 0}
+.status{display:flex;gap:8px;margin:0 8px 10px;flex-wrap:wrap}
+.status span{background:var(--bg2);border-radius:10px;padding:6px 10px;font-size:.8rem;font-weight:700}
+/* overlays */
+.ov{position:fixed;inset:0;z-index:40;background:rgba(16,19,24,.55);display:none;align-items:flex-end;justify-content:center}
+.ov.show{display:flex}
+.card{background:var(--bg);width:100%;max-width:560px;max-height:88vh;overflow:auto;border-radius:24px 24px 0 0;padding:22px 20px calc(20px + env(safe-area-inset-bottom))}
+.card h2{font-size:1.3rem;margin:0 0 12px;font-weight:800}
+.card ol{margin:0;padding:0;list-style:none;counter-reset:s;display:grid;gap:12px}
+.card li{counter-increment:s;display:flex;gap:12px;font-size:.95rem;line-height:1.5}
+.card li:before{content:counter(s);flex:none;width:32px;height:32px;border-radius:50%;background:var(--acc);color:#fff;font-weight:800;display:grid;place-items:center}
+.card .big{margin-top:16px;width:100%}
+.card .k{display:inline-block;background:var(--bg2);border-radius:8px;padding:0 8px;font-weight:800}
+.toast{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 190px);transform:translateX(-50%);z-index:30;background:var(--ink);color:#fff;padding:12px 18px;border-radius:14px;font-weight:700;font-size:.9rem;box-shadow:var(--sh);display:none;max-width:90vw;text-align:center}
 </style>
 </head>
 <body>
@@ -120,34 +159,77 @@ select.chip{appearance:none;padding-right:28px;background-image:linear-gradient(
 
 <div class="top">
   <label class="search">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-    <input id="q" type="search" placeholder="휴게소·노선 검색" autocomplete="off" enterkeyhint="search">
-    <button class="ibtn" id="refresh" aria-label="새로고침"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8a93a1" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" type="search" placeholder="휴게소 이름 검색" autocomplete="off" enterkeyhint="search">
+    <button class="tbtn" id="bigtxt" type="button" aria-label="글자 크게">가+</button>
+    <button class="tbtn" id="help" type="button" aria-label="사용 방법">?</button>
+    <button class="tbtn" id="refresh" type="button" aria-label="새로고침"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>
   </label>
-  <div class="chips" id="chips">
-    <button class="chip" data-f="gas" aria-pressed="true">휘발유</button>
-    <button class="chip" data-f="dsl" aria-pressed="false">경유</button>
-    <button class="chip" data-f="lpg" aria-pressed="false">LPG</button>
-    <select class="chip" id="route" aria-label="노선 선택"><option value="">전체 노선</option></select>
+  <div class="fuelsel" id="fuelsel">
+    <button class="fbtn" data-f="gas" type="button">휘발유</button>
+    <button class="fbtn" data-f="dsl" type="button">경유</button>
+    <button class="fbtn" data-f="lpg" type="button">LPG</button>
+  </div>
+  <div class="routebar">
+    <select id="route" aria-label="고속도로 선택"><option value="">모든 고속도로</option></select>
+    <span class="legend"><i></i>싼 곳</span>
   </div>
 </div>
 
-<button class="fab" id="locate" aria-label="내 위치"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+<div class="acts" id="acts">
+  <button class="abtn" id="install" type="button" hidden>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>설치</button>
+  <button class="abtn" id="locate" type="button">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>내 위치</button>
+  <button class="abtn p" id="drive" type="button">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 20 21 12 17 4 21z"/></svg>주행 모드</button>
+</div>
 
 <section class="sheet" id="sheet">
-  <button class="grab" id="grab" aria-label="목록 펼치기/접기"><i></i></button>
+  <button class="grab" id="grab" type="button"><i></i></button>
   <div id="view" style="display:contents"></div>
 </section>
+
+<div class="toast" id="toast" role="status"></div>
+
+<div class="ov" id="helpov" role="dialog" aria-modal="true" aria-labelledby="helpt">
+  <div class="card">
+    <h2 id="helpt">이렇게 사용하세요</h2>
+    <ol>
+      <li><span>맨 위에서 <span class="k">휘발유</span> <span class="k">경유</span> <span class="k">LPG</span> 중 내 차 기름을 누르세요.</span></li>
+      <li><span>지도의 숫자가 기름값이에요. <b style="color:var(--cheap)">초록색</b>이 가장 싼 곳이에요. 지도를 손가락 두 개로 벌리면 크게 보여요.</span></li>
+      <li><span>휴게소를 누르면 기름값, 파는 음식, 전화번호가 나와요.</span></li>
+      <li><span><span class="k">주행 모드</span>를 누르면 가는 길 앞쪽 주유소를 가까운 순서로 알려드려요. 5km 안으로 가까워지면 진동으로 알려드려요.</span></li>
+      <li><span><span class="k">T맵으로 길안내</span>를 누르면 T맵이 그 휴게소까지 안내해요. 내 위치는 이 앱과 T맵 모두 휴대폰 GPS를 그대로 써요.</span></li>
+      <li><span>글씨가 작으면 맨 위 <span class="k">가+</span>를 누르세요.</span></li>
+    </ol>
+    <button class="big p" id="helpok" type="button">알겠어요</button>
+    <button class="big" id="helpinstall" type="button">휴대폰에 설치하는 방법</button>
+  </div>
+</div>
+
+<div class="ov" id="instov" role="dialog" aria-modal="true" aria-labelledby="instt">
+  <div class="card">
+    <h2 id="instt">휴대폰에 설치하기</h2>
+    <div id="instbody"></div>
+    <button class="big p" id="instok" type="button">닫기</button>
+  </div>
+</div>
 
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
 {
 const KEY = 'test'; // 한국도로공사 공공데이터포털(data.ex.co.kr) 인증키 — 발급받은 키로 바꿔도 됩니다
+// T맵(SK open API) 앱키: 넣으면 거리를 T맵 길찾기와 같은 기준(실제 도로 거리)으로 계산. 비워두면 공개 길찾기(OSRM) 도로 거리 사용
+const TMAP_KEY = '';
 const API = 'https://data.ex.co.kr/openapi/';
 const FUEL = {gas:'휘발유', dsl:'경유', lpg:'LPG'};
 const OIL = {AD:'알뜰주유소',SK:'SK에너지',GS:'GS칼텍스',HD:'HD현대오일뱅크',S:'S-OIL',SO:'S-OIL',E1:'E1',SKG:'SK가스'};
-// 도로공사 위치 API에 좌표가 없는 휴게소: 이름·주소로 찾은 위치를 서로 대조해 확인한 좌표만 넣음
-const EXTRA = {"옥천만남의광장":[127.57176,36.30871],"지리산":[127.59464,35.50788],"거창":[128.05773,35.70836],"강천산":[127.10415,35.36442],"논공":[128.40339,35.76708],"밀양영남루":[128.66459,35.4904],"울주":[129.12803,35.51263],"매송":[126.89138,37.26441],"부안고려청자":[126.73214,35.67159],"진안마이산":[127.42644,35.77474],"영천":[129.04295,36.05171],"청통":[128.85944,35.99346],"와촌":[128.81517,35.95022],"춘향":[127.37085,35.33282],"처인":[127.21993,37.34037],"고삼호수":[127.29533,37.07702],"문의청남대":[127.48418,36.54396],"함양":[127.76055,35.55148],"마장복합":[127.36341,37.24973],"평택":[127.10484,37.06032],"남한강":[127.46722,37.48264],"안산":[126.81878,37.35117],"내린천":[128.28711,37.91604],"포항":[129.34927,36.23703],"영덕":[129.34768,36.31153],"시흥하늘":[126.85523,37.38565],"의왕청계":[127.01173,37.38436],"서하남":[127.19306,37.52594],"구리남양주":[127.15684,37.59522],"서부산":[128.94871,35.15694],"김해금관가야":[129.00304,35.26903],"김제":[126.89763,35.83968],"장흥정남진":[126.90625,34.7301]};
+// 도로공사 위치 API에 좌표가 없는 휴게소: 이름 검색과 주소 검색 결과를 서로 대조해 확인한 좌표
+const EXTRA = {"옥천만남의광장":[127.57176,36.30871],"지리산":[127.59464,35.50788],"거창":[128.05773,35.70836],"강천산":[127.10415,35.36442],"논공":[128.40339,35.76708],"밀양영남루":[128.66459,35.4904],"울주":[129.12803,35.51263],"매송":[126.89138,37.26441],"부안고려청자":[126.73214,35.67159],"진안마이산":[127.42644,35.77474],"영천":[129.04295,36.05171],"청통":[128.85944,35.99346],"와촌":[128.81517,35.95022],"춘향":[127.37085,35.33282],"처인":[127.21993,37.34037],"고삼호수":[127.29533,37.07702],"문의청남대":[127.48418,36.54396],"함양":[127.76055,35.55148],"마장복합":[127.36341,37.24973],"평택":[127.10484,37.06032],"남한강":[127.46722,37.48264],"안산":[126.81878,37.35117],"내린천":[128.28711,37.91604],"포항":[129.34927,36.23703],"영덕":[129.34768,36.31153],"시흥하늘":[126.85523,37.38565],"의왕청계":[127.01173,37.38436],"서하남":[127.19306,37.52594],"구리남양주":[127.15684,37.59522],"서부산":[128.94871,35.15694],"김해금관가야":[129.00304,35.26903],"김제":[126.89763,35.83968],"장흥정남진":[126.90625,34.7301],
+"가평":[127.5031,37.6575],"광주":[127.36195,37.34995],"군위영천":[128.70882,36.0706],"낙동강구미":[128.3005,36.34349],"낙동강의성":[128.2966,36.34561],"삼국유사군위":[128.69731,36.07939],"송산포도":[126.72921,37.22124],"양주":[126.91585,37.67916],"양평":[127.72694,37.39625],"영종대교":[126.60794,37.55411],"오산":[127.03824,37.17583],"이인":[127.06926,36.35337],"정안알밤":[127.11454,36.56922],"청도새마을":[128.76736,35.59556],"탄천":[127.07045,36.31888],"덕평":[127.36341,37.24973]};
+// 메뉴 정보에만 있는 휴게소(위치·주유 API에 없음) — 전국 휴게소가 빠지지 않도록 기본 목록에 포함
+const SEED = [["가평(서울)휴게소","000454","서울양양선","경기 가평군 설악면미사리 145"],["가평(춘천)휴게소","000455","서울양양선","경기 가평군 설악면미사리 149"],["오산(봉담)휴게소","000456","평택파주선","경기 오산시 지곶동56-8"],["오산(동탄)휴게소","000457","평택파주선","경기 오산시 지곶동60-10"],["송산포도휴게소","000458","평택시흥선","경기 화성시 송산면고정리 349-26"],["정안알밤(천안)휴게소","000459","논산천안선","충남 공주시 정안면논산천안고속도로 58"],["정안알밤(논산)휴게소","000460","논산천안선","충남 공주시 정안면논산천안고속도로 57"],["이인(천안)휴게소","000461","논산천안선","충남 공주시 이인면논산천안고속도로 32"],["탄천(논산)휴게소","000462","논산천안선","충남 공주시 탄천면장선리 151-6"],["양주(일산)휴게소","000469","수도권제1순환선","경기 양주시 장흥면서울외곽순환고속도로 58"],["청도새마을(대구)휴게소","000477","중앙선","경북 청도군 청도읍거연리 288"],["청도새마을(부산)휴게소","000478","중앙선","경북 청도군 청도읍거연리 950"],["영종대교휴게소","000483","인천국제공항선","인천 서구 오류동정서진남로 25"],["양평(광주)휴게소","000487","중앙선","경기 양평군 양동면여양3로 384-27"],["양평(원주)휴게소","000488","중앙선","경기 양평군 양동면송석2길 52"],["광주(광주)휴게소","000491","중앙선","경기 광주시곤지암읍 만삼로 211"],["광주(원주)휴게소","000492","중앙선","경기 광주시곤지암읍 만삼로 270"],["낙동강의성(영천)휴게소","000516","상주영천선","경상북도 의성군 단밀면 도안로 757-68"],["낙동강구미(상주)휴게소","000517","상주영천선","경상북도 구미시 도개면 용산3길"],["군위영천(영천)휴게소","000520","상주영천선","경상북도 영천시 신녕면 치산효령로 865-43"],["삼국유사군위(상주)휴게소","000521","상주영천선","경상북도 영천시 신녕면 치산효령로 989-23"]];
 
 const $ = s => document.querySelector(s);
 const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -156,6 +238,11 @@ const keyOf = n => String(n||'').replace(/(휴게소|주유소|LPG충전소|충�
 const baseOf = n => keyOf(n).replace(/\(.*?\)/g,'');
 const dirOf = n => (String(n||'').match(/\(([^)]+)\)/)||[])[1] || '';
 const store = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem('hw.'+k)); localStorage.setItem('hw.'+k, JSON.stringify(v)); } catch { return null; } };
+const fmtKm = d => d < 1 ? Math.round(d * 1000) + 'm' : d < 10 ? d.toFixed(1) + 'km' : Math.round(d) + 'km';
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isAndroid = /android/i.test(navigator.userAgent);
+const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+let toastT; const toast = m => { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 3500); };
 
 // 가격: 도로공사가 준 문자열만 그대로 해석. 형식이 맞지 않거나 비정상 범위면 숫자로 쓰지 않음
 function price(s) {
@@ -183,32 +270,36 @@ async function getAll(path, params = '') {
   return list;
 }
 
-let S = {fuel: store('fuel') || 'gas', route: '', q: '', sort: 'near', me: null, items: [], loaded: null, fuelErr: null, sel: null, menus: {}};
-// 지도: OpenFreeMap(무료, 키 불필요) — 지명은 한글로, 고속도로는 강조색으로
-const map = new maplibregl.Map({container: 'map', center: [127.9, 35.6], zoom: 5.9, minZoom: 5, maxZoom: 17, attributionControl: false, pitchWithRotate: false, dragRotate: false});
+const S = {fuel: store('fuel') || 'gas', route: '', q: '', sort: 'cheap', me: null, heading: null, speed: null, items: [], loaded: null, fuelErr: null, sel: null, menus: {}, drive: false, follow: true, limit: 60};
+if (store('big')) document.documentElement.classList.add('big');
+
+// 지도: OpenFreeMap(무료, 키 불필요) — 지명은 한글로, 고속도로는 파란색으로 강조
+const map = new maplibregl.Map({container: 'map', center: [127.9, 35.9], zoom: 5.8, minZoom: 5, maxZoom: 17, attributionControl: false, pitchWithRotate: false, dragRotate: false});
 map.touchZoomRotate.disableRotation();
 fetch('https://tiles.openfreemap.org/styles/positron').then(r => r.json()).then(st => {
   for (const l of st.layers) {
     if (l.layout && l.layout['text-field']) l.layout['text-field'] = ['coalesce', ['get', 'name:ko'], ['get', 'name']];
-    if (l.type === 'line' && /motorway/.test(l.id) && !/casing|link/.test(l.id) && l.paint) l.paint['line-color'] = '#9db8ff';
+    if (l.type === 'line' && /motorway/.test(l.id) && !/casing|link/.test(l.id) && l.paint) l.paint['line-color'] = '#8fb0ff';
   }
   map.setStyle(st);
 }).catch(() => map.setStyle('https://tiles.openfreemap.org/styles/positron'));
-let marks = [], meMarker = null;
+let marks = [], meMarker = null, meEl = null;
 const zoomCls = () => $('#map').classList.toggle('zoomed', map.getZoom() >= 9.3);
 map.on('zoom', zoomCls); zoomCls();
+map.on('dragstart', () => { if (S.drive && S.follow) { S.follow = false; renderDrive(); } });
 
 function build(loc, conv, food, fuel) {
   const byKey = new Map(), byCode = new Map();
   const get = (name, route) => {
     const k = keyOf(name);
-    if (!byKey.has(k)) byKey.set(k, {k, base: baseOf(name), dir: dirOf(name), route: route || '', name: baseOf(name), lat: null, lng: null, std: null, code: null});
+    if (!byKey.has(k)) byKey.set(k, {k, base: baseOf(name), dir: dirOf(name), route: route || '', lat: null, lng: null, std: null, code: null});
     const it = byKey.get(k); if (!it.route && route) it.route = route; return it;
   };
+  const locBase = {};
   for (const l of loc) {
     const it = get(l.unitName, l.routeName);
     const x = parseFloat(l.xValue), y = parseFloat(l.yValue);
-    if (x > 124 && x < 132 && y > 33 && y < 39) { it.lat = y; it.lng = x; }
+    if (x > 124 && x < 132 && y > 33 && y < 39) { it.lat = y; it.lng = x; it.exact = true; locBase[it.base] = locBase[it.base] || [x, y]; }
     it.std = l.stdRestCd; it.code = l.serviceAreaCode; byCode.set(l.serviceAreaCode, it);
   }
   for (const c of conv) {
@@ -220,12 +311,13 @@ function build(loc, conv, food, fuel) {
     const it = get(f.serviceAreaName, f.routeName);
     it.fuel = {gas: price(f.gasolinePrice), dsl: price(f.diselPrice), lpg: price(f.lpgPrice), raw: f};
   }
+  for (const [name, std, route, addr] of SEED) { const it = get(name, route); if (!it.std) it.std = std; if (!it.addr) it.addr = addr; }
   const items = [...byKey.values()];
-  // 좌표 없는 곳은 확인된 EXTRA 좌표만 사용 (같은 휴게소 양방향은 살짝 띄워 겹침 방지)
   const seen = {};
-  for (const it of items) if (it.lat == null && EXTRA[it.base]) {
-    const n = seen[it.base] = (seen[it.base] || 0) + 1;
-    it.lat = EXTRA[it.base][1] + (n - 1) * 0.004; it.lng = EXTRA[it.base][0] + (n - 1) * 0.004;
+  for (const it of items) if (it.lat == null) {
+    const c = locBase[it.base] || EXTRA[it.base]; if (!c) continue;
+    const n = seen[it.base] = (seen[it.base] || 0) + 1;   // 같은 휴게소 양방향은 살짝 띄워 겹침 방지
+    it.lat = c[1] + (n - 1) * 0.004; it.lng = c[0] + (n - 1) * 0.004;
   }
   return items;
 }
@@ -241,29 +333,67 @@ async function load() {
     S.items = build(loc.value || [], conv.value || [], food.value || [], fuel.value || []);
     S.loaded = new Date(); S.menus = {};
     const routes = [...new Set(S.items.map(i => i.route).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ko'));
-    $('#route').innerHTML = '<option value="">전체 노선</option>' + routes.map(r => `<option ${r === S.route ? 'selected' : ''}>${esc(r)}</option>`).join('');
+    $('#route').innerHTML = '<option value="">모든 고속도로</option>' + routes.map(r => `<option ${r === S.route ? 'selected' : ''}>${esc(r)}</option>`).join('');
     if (S.sel) S.sel = S.items.find(i => i.k === S.sel.k) || null;
     render();
   } catch (e) {
     S.items = []; S.fuelErr = e.message;
-    $('#view').innerHTML = `<div class="head"><h1>휴게소 주유 지도</h1></div><div class="err">데이터를 불러오지 못했어요.<br>인터넷 연결을 확인하고 새로고침을 눌러 주세요.<br><small>${esc(e.message)}</small></div>`;
+    $('#view').innerHTML = `<div class="head"><h1>휴게소 주유 지도</h1></div><div class="err">정보를 불러오지 못했어요.<br>인터넷이 연결되어 있는지 확인한 뒤<br>오른쪽 위 새로고침(↻)을 눌러 주세요.</div>`;
   } finally { $('#refresh').classList.remove('spin'); }
 }
 
-const dist = it => (S.me && it.lat != null) ? (() => { const R = 6371, r = Math.PI / 180, dLa = (it.lat - S.me[0]) * r, dLo = (it.lng - S.me[1]) * r;
-  const a = Math.sin(dLa / 2) ** 2 + Math.cos(S.me[0] * r) * Math.cos(it.lat * r) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(a)); })() : null;
+const distTo = (it, from = S.me) => {
+  if (!from || it.lat == null) return null;
+  const R = 6371, r = Math.PI / 180, dLa = (it.lat - from[0]) * r, dLo = (it.lng - from[1]) * r;
+  const a = Math.sin(dLa / 2) ** 2 + Math.cos(from[0] * r) * Math.cos(it.lat * r) * Math.sin(dLo / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+};
+const bearing = (a, b) => { const r = Math.PI / 180, y = Math.sin((b[1] - a[1]) * r) * Math.cos(b[0] * r), x = Math.cos(a[0] * r) * Math.sin(b[0] * r) - Math.sin(a[0] * r) * Math.cos(b[0] * r) * Math.cos((b[1] - a[1]) * r); return (Math.atan2(y, x) / r + 360) % 360; };
 const pv = it => it.fuel && it.fuel[S.fuel].st === 'ok' ? it.fuel[S.fuel].v : null;
+
+// ---------- 실제 도로 거리 (T맵 키가 있으면 T맵, 없으면 OSRM) ----------
+const R = {from: null, at: 0, m: {}, busy: false};
+async function tmapDist(it) {
+  const r = await fetch('https://apis.openapi.sk.com/tmap/routes?version=1&format=json', {method: 'POST', headers: {appKey: TMAP_KEY, 'Content-Type': 'application/json'},
+    body: JSON.stringify({startX: S.me[1], startY: S.me[0], endX: it.lng, endY: it.lat, reqCoordType: 'WGS84GEO', resCoordType: 'WGS84GEO', searchOption: '0', startName: '내위치', endName: it.base})});
+  if (!r.ok) throw new Error('tmap ' + r.status);
+  const j = await r.json(), p = j.features?.[0]?.properties;
+  if (!p || !(p.totalDistance >= 0)) throw new Error('tmap 응답 오류');
+  return {km: p.totalDistance / 1000, min: Math.round(p.totalTime / 60), src: 'T맵'};
+}
+async function updateRoad(items, after) {
+  if (!S.me || R.busy) return;
+  const moved = R.from ? distTo({lat: S.me[0], lng: S.me[1]}, R.from) : 1e9;
+  if (moved > 0.3 || Date.now() - R.at > 60000) { R.m = {}; R.from = S.me.slice(); R.at = Date.now(); }
+  const need = items.filter(it => it.lat != null && !R.m[it.k]).slice(0, 8);
+  if (!need.length) return;
+  R.busy = true;
+  try {
+    if (TMAP_KEY) for (const it of need.slice(0, 4)) { try { R.m[it.k] = await tmapDist(it); } catch {} }
+    const rest = need.filter(it => !R.m[it.k]);
+    if (rest.length) {
+      const pts = [[S.me[1], S.me[0]], ...rest.map(it => [it.lng, it.lat])].map(p => p[0].toFixed(5) + ',' + p[1].toFixed(5)).join(';');
+      const r = await fetch(`https://router.project-osrm.org/table/v1/driving/${pts}?sources=0&annotations=distance,duration`);
+      const j = await r.json();
+      if (j.code === 'Ok') rest.forEach((it, i) => { const m = j.distances?.[0]?.[i + 1]; if (m != null) R.m[it.k] = {km: m / 1000, min: Math.round(j.durations[0][i + 1] / 60), src: '도로'}; });
+    }
+  } catch {} finally { R.busy = false; }
+  after && after();
+}
+// 화면 표시: 도로 거리가 있으면 그것을, 없으면 "직선" 이라고 분명히 표시
+const roadKm = it => R.m[it.k]?.km;
+const distLabel = (it, straight) => { const r = R.m[it.k]; if (r) return `${r.src === 'T맵' ? 'T맵 ' : '도로 '}${fmtKm(r.km)}${it.exact ? '' : ' (약)'}`; return straight != null ? `직선 ${fmtKm(straight)}` : ''; };
 
 function filtered() {
   const q = S.q.replace(/\s/g, '');
   let a = S.items.filter(it => (!S.route || it.route === S.route) && (!q || (it.k + it.route).includes(q)));
-  if (S.sort === 'cheap') a = a.filter(it => pv(it) != null).sort((x, y) => pv(x) - pv(y));
-  else if (S.sort === 'near' && S.me) a.sort((x, y) => (dist(x) ?? 1e9) - (dist(y) ?? 1e9));
+  if (S.sort === 'cheap') a.sort((x, y) => (pv(x) ?? 1e9) - (pv(y) ?? 1e9) || x.k.localeCompare(y.k, 'ko'));
+  else if (S.sort === 'near' && S.me) a.sort((x, y) => (distTo(x) ?? 1e9) - (distTo(y) ?? 1e9));
   else a.sort((x, y) => (x.route + x.k).localeCompare(y.route + y.k, 'ko'));
   return a;
 }
 
-function render() { drawMap(); S.sel ? renderDetail(S.sel) : renderList(); }
+function render() { drawMap(); if (S.drive) renderDrive(); else if (S.sel) renderDetail(S.sel); else renderList(); }
 
 function drawMap() {
   marks.forEach(m => m.remove()); marks = [];
@@ -271,148 +401,290 @@ function drawMap() {
   const cut = vals.length ? vals[Math.max(0, Math.floor(vals.length * 0.1) - 1)] : -1;
   for (const it of list) {
     if (it.lat == null) continue;
-    const v = pv(it), cls = ['mk', v == null ? 'nf' : '', v != null && v <= cut ? 'cheap' : '', S.sel?.k === it.k ? 'sel' : ''].join(' ');
+    const v = pv(it), sel = S.sel?.k === it.k;
     const el = document.createElement('div');
-    el.className = cls; el.title = it.k;
+    el.className = ['mk', v == null ? 'nf' : '', v != null && v <= cut ? 'cheap' : '', sel ? 'sel' : ''].join(' ');
+    el.title = it.k;
     el.innerHTML = `<div class="pill">${v != null ? v.toLocaleString('ko-KR') : esc(it.base)}</div><div class="dot"></div>`;
-    el.style.zIndex = S.sel?.k === it.k ? 3 : v != null ? 2 : 1;
+    el.style.zIndex = sel ? 3 : v != null ? 2 : 1;
     el.addEventListener('click', e => { e.stopPropagation(); open(it); });
     marks.push(new maplibregl.Marker({element: el, anchor: 'center'}).setLngLat([it.lng, it.lat]).addTo(map));
   }
 }
 
-function setH(h) { $('#sheet').style.setProperty('--h', h); document.documentElement.style.setProperty('--sheetH', h); $('#locate').style.bottom = `calc(${h} + 12px)`; }
+function setH(h) { $('#sheet').style.setProperty('--h', h); $('#acts').style.bottom = `calc(${h} + 10px)`; S.h = h; }
+const timeStr = () => S.loaded ? S.loaded.toLocaleTimeString('ko-KR', {hour: '2-digit', minute: '2-digit'}) : '';
+const priceRight = it => {
+  const v = pv(it), f = it.fuel?.[S.fuel];
+  if (S.fuelErr) return `<small>가격 확인 불가</small>`;
+  if (v != null) return `<b>${won(v)}</b>`;
+  if (f?.st === 'bad') return `<b style="color:var(--warn);font-size:.9rem">확인 필요</b>`;
+  return it.fuel ? `<small>${FUEL[S.fuel]} 안 팖</small>` : `<small>주유소 없음</small>`;
+};
 
 function renderList() {
   const list = filtered(), vals = list.map(pv).filter(v => v != null);
   const min = vals.length ? Math.min(...vals) : null, max = vals.length ? Math.max(...vals) : null;
   const avg = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
-  const t = S.loaded ? S.loaded.toLocaleTimeString('ko-KR', {hour: '2-digit', minute: '2-digit'}) : '';
-  const nFuel = list.filter(it => it.fuel).length;
   const allV = S.items.map(pv).filter(v => v != null), natMin = allV.length ? Math.min(...allV) : null;
-  const rows = list.slice(0, S.limit || 60).map(it => {
-    const v = pv(it), d = dist(it), f = it.fuel?.[S.fuel];
-    const right = S.fuelErr ? `<small>가격 확인 불가</small>` : v != null ?`<b>${won(v)}</b>` : f?.st === 'bad' ? `<b style="color:var(--warn);font-size:14px">확인 필요</b>` : it.fuel ? `<small>${FUEL[S.fuel]} 미판매</small>` : `<small>주유소 없음</small>`;
-    return `<button class="row" data-k="${esc(it.k)}"><div class="nm"><b>${esc(it.base)}${it.dir ? `<span class="badge">${esc(it.dir)} 방향</span>` : ''}${v != null && v === natMin ? '<span class="badge g">전국 최저</span>' : ''}</b><small>${esc(it.route || '노선 정보 없음')}${d != null ? ` · ${d < 10 ? d.toFixed(1) : Math.round(d)}km` : ''}${it.rep ? ` · ${esc(it.rep.batchMenu)}` : ''}</small></div><div class="pr ${v != null && v === natMin ? 'cheap' : ''}">${right}</div></button>`;
+  const nFuel = list.filter(it => it.fuel).length;
+  if (S.me && S.sort === 'near') updateRoad(list.slice(0, 8), () => { if (!S.drive && !S.sel) { const b = $('.body'), y = b?.scrollTop; renderList(); if ($('.body')) $('.body').scrollTop = y; } });
+  const rows = list.slice(0, S.limit).map(it => {
+    const v = pv(it), d = distTo(it);
+    return `<button class="row" data-k="${esc(it.k)}" type="button"><div class="nm"><b>${esc(it.base)}${it.dir ? `<span class="badge">${esc(it.dir)} 방향</span>` : ''}${v != null && v === natMin ? '<span class="badge g">전국 최저</span>' : ''}</b><small>${esc(it.route || '')}${d != null ? ` · ${distLabel(it, d)}` : ''}${it.rep ? ` · ${esc(it.rep.batchMenu)}` : ''}</small></div><div class="pr ${v != null && v === natMin ? 'cheap' : ''}">${priceRight(it)}</div></button>`;
   }).join('');
   $('#view').innerHTML = `
     <div class="head">
-      <h1>${S.q ? `‘${esc(S.q)}’ 검색 결과` : S.route ? esc(S.route) : '전국 고속도로 휴게소'}</h1>
-      <div class="meta"><span>휴게소 ${list.length}곳 · 주유소 ${nFuel}곳</span>${t ? `<span>· ${t} 기준</span>` : ''}</div>
+      <h1>${S.q ? `‘${esc(S.q)}’ 찾은 결과` : S.route ? esc(S.route) : '전국 고속도로 휴게소'}</h1>
+      <div class="meta"><span>휴게소 ${list.length}곳 · 주유소 ${nFuel}곳</span>${timeStr() ? `<span>· ${timeStr()} 기준 가격</span>` : ''}</div>
       <div class="stats">
-        <div class="stat g"><span>${FUEL[S.fuel]} 최저</span><b>${min != null ? won(min) : '–'}</b></div>
+        <div class="stat g"><span>${FUEL[S.fuel]} 가장 쌈</span><b>${min != null ? won(min) : '–'}</b></div>
         <div class="stat"><span>평균</span><b>${avg != null ? won(avg) : '–'}</b></div>
-        <div class="stat"><span>최고</span><b>${max != null ? won(max) : '–'}</b></div>
+        <div class="stat"><span>가장 비쌈</span><b>${max != null ? won(max) : '–'}</b></div>
       </div>
       <div class="sorts">
-        <button class="chip" data-s="near" aria-pressed="${S.sort === 'near'}">가까운 순</button>
-        <button class="chip" data-s="cheap" aria-pressed="${S.sort === 'cheap'}">싼 순</button>
-        <button class="chip" data-s="route" aria-pressed="${S.sort === 'route'}">노선 순</button>
+        <button type="button" data-s="cheap" aria-pressed="${S.sort === 'cheap'}">싼 순서</button>
+        <button type="button" data-s="near" aria-pressed="${S.sort === 'near'}">가까운 순서</button>
+        <button type="button" data-s="route" aria-pressed="${S.sort === 'route'}">도로별</button>
       </div>
     </div>
     <div class="body">
-      ${S.fuelErr ? `<div class="banner">주유 가격을 불러오지 못해 가격을 표시하지 않았어요. 새로고침을 눌러 주세요.</div>` : ''}
-      ${S.sort === 'near' && !S.me ? `<div class="empty" style="padding:10px">내 위치 버튼을 누르면 가까운 순으로 정렬돼요</div>` : ''}
-      ${rows || '<div class="empty">검색 결과가 없어요</div>'}
-      ${list.length > (S.limit || 60) ? `<button class="more" id="more">더 보기 (${list.length - (S.limit || 60)}곳)</button>` : ''}
-      <p class="note">가격은 한국도로공사가 제공하는 휴게소 주유소 판매가를 받은 그대로 표시해요. 현장 가격과 다를 수 있어요.<br>지도 © <a href="https://openfreemap.org" target="_blank" rel="noopener" style="color:inherit">OpenFreeMap</a> · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener" style="color:inherit">OpenStreetMap</a> 기여자</p>
+      ${S.fuelErr ? `<div class="banner">기름값을 불러오지 못해 가격을 보여드리지 않았어요. 오른쪽 위 새로고침(↻)을 눌러 주세요.</div>` : ''}
+      ${S.sort === 'near' && !S.me ? `<div class="info">가까운 순서로 보려면 <b>내 위치</b> 버튼을 누르고 위치 사용을 허용해 주세요.</div>` : ''}
+      ${rows || '<div class="empty">찾는 휴게소가 없어요. 이름을 다시 확인해 주세요.</div>'}
+      ${list.length > S.limit ? `<button class="more" id="more" type="button">더 보기 (${list.length - S.limit}곳 더)</button>` : ''}
+      <p class="note">기름값은 한국도로공사가 알려주는 휴게소 주유소 가격을 그대로 보여드려요. 현장 가격과 다를 수 있어요.<br>지도 © <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a></p>
     </div>`;
 }
 
+// T맵 길안내: 안드로이드는 T맵이 없으면 설치 화면으로, 아이폰은 T맵 앱을 바로 엶
+// 도로공사 공식 좌표가 있는 휴게소만 좌표로 안내. 좌표가 대략적인 곳은 T맵이 이름으로 직접 찾게 해
+// 반대 방향 휴게소나 엉뚱한 위치로 안내되지 않게 함
+function tmapUrl(it) {
+  const name = encodeURIComponent(it.base + (it.dir ? `(${it.dir})` : '') + '휴게소');
+  const q = it.exact ? `route?goalname=${name}&goalx=${it.lng}&goaly=${it.lat}` : `search?name=${name}`;
+  return isAndroid ? `intent://${q}#Intent;scheme=tmap;package=com.skt.tmap.ku;end` : `tmap://${q}`;
+}
+const kakaoUrl = it => `https://map.kakao.com/link/to/${encodeURIComponent(it.base + (it.dir ? '(' + it.dir + ')' : '') + '휴게소')},${it.lat},${it.lng}`;
+const navBtns = it => `<div class="btns two"><a class="big tmap" href="${esc(tmapUrl(it))}">T맵으로 길안내</a>${it.exact ? `<a class="big" href="${esc(kakaoUrl(it))}" target="_blank" rel="noopener">카카오맵</a>` : `<a class="big" href="https://map.kakao.com/link/search/${encodeURIComponent(it.base + (it.dir ? '(' + it.dir + ')' : '') + '휴게소')}" target="_blank" rel="noopener">카카오맵</a>`}</div>
+  ${it.exact ? '' : `<p class="note" style="margin-top:6px">이 휴게소는 공식 좌표가 없어서 지도 위치가 대략적이에요. 길안내는 T맵이 휴게소 이름으로 정확한 위치를 찾아 안내해요.</p>`}`;
+
 function renderDetail(it) {
-  const f = it.fuel, c = it.conv, d = dist(it);
+  const f = it.fuel, c = it.conv, d = distTo(it);
   const cheapest = k => { const vs = S.items.map(i => i.fuel?.[k]).filter(x => x?.st === 'ok').map(x => x.v); return vs.length ? Math.min(...vs) : null; };
   const fuelBox = k => {
-    if (!f) return '';
     const p = f[k], mn = cheapest(k);
-    if (p.st === 'ok') return `<div class="fuel ${p.v === mn ? 'cheap' : ''}"><span>${FUEL[k]}${p.v === mn ? ' · 최저' : ''}</span><b>${won(p.v)}</b></div>`;
+    if (p.st === 'ok') return `<div class="fuel ${p.v === mn ? 'cheap' : ''}"><span>${FUEL[k]}${p.v === mn ? ' · 전국 최저' : ''}</span><b>${won(p.v)}</b></div>`;
     if (p.st === 'bad') return `<div class="fuel bad"><span>${FUEL[k]}</span><b>확인 필요</b></div>`;
-    return `<div class="fuel na"><span>${FUEL[k]}</span><b>미판매</b></div>`;
+    return `<div class="fuel na"><span>${FUEL[k]}</span><b>안 팖</b></div>`;
   };
   const tel = (f?.raw.telNo || c?.telNo || '').trim();
   const fac = (c?.convenience || '').split('|').map(s => s.trim()).filter(Boolean);
+  const brands = (c?.brand || '').split(/[|,]/).map(s => s.trim()).filter(Boolean);
   const menu = S.menus[it.k];
-  const menuHtml = menu === undefined ? '<div class="empty">메뉴를 불러오는 중…</div>'
-    : menu === null ? '<div class="err" style="padding:12px">메뉴를 불러오지 못했어요</div>'
-    : !menu.length ? '<div class="empty" style="padding:12px">등록된 메뉴가 없어요</div>'
+  const menuHtml = menu === undefined ? '<div class="empty">음식 메뉴를 불러오는 중이에요…</div>'
+    : menu === null ? '<div class="err" style="padding:12px">음식 메뉴를 불러오지 못했어요</div>'
+    : !menu.length ? '<div class="empty" style="padding:12px">등록된 음식 메뉴가 없어요</div>'
     : menu.map(m => { const cost = /^\d+$/.test(String(m.foodCost).trim()) ? won(+m.foodCost) : esc(m.foodCost);
-        return `<div class="menu"><div><b>${esc(m.foodNm)}${m.bestfoodyn === 'Y' ? '<span class="badge o">베스트</span>' : ''}${m.recommendyn === 'Y' ? '<span class="badge b">추천</span>' : ''}${m.premiumyn === 'Y' ? '<span class="badge">프리미엄</span>' : ''}</b>${m.etc ? `<p>${esc(m.etc)}</p>` : ''}</div><div class="pr">${cost}</div></div>`; }).join('');
-  const nav = it.lat != null ? `https://map.kakao.com/link/to/${encodeURIComponent(it.base + (it.dir ? '(' + it.dir + ')' : '') + '휴게소')},${it.lat},${it.lng}` : null;
+        return `<div class="menu"><div><b>${esc(m.foodNm)}${m.bestfoodyn === 'Y' ? '<span class="badge o">인기</span>' : ''}${m.recommendyn === 'Y' ? '<span class="badge b">추천</span>' : ''}${m.premiumyn === 'Y' ? '<span class="badge">고급</span>' : ''}</b>${m.etc ? `<p>${esc(m.etc)}</p>` : ''}</div><div class="pr">${cost}</div></div>`; }).join('');
+  const addr = c?.svarAddr || f?.raw.svarAddr || it.addr;
   $('#view').innerHTML = `
     <div class="head">
-      <button class="back" id="back"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg>목록</button>
-      <h1>${esc(it.base)} 휴게소${it.dir ? ` <span class="badge" style="font-size:13px">${esc(it.dir)} 방향</span>` : ''}</h1>
-      <div class="meta"><span>${esc(it.route || '')}</span>${d != null ? `<span>· 여기서 ${d < 10 ? d.toFixed(1) : Math.round(d)}km</span>` : ''}${f ? `<span>· ${esc(OIL[f.raw.oilCompany] || f.raw.oilCompany || '')}</span>` : ''}</div>
+      <button class="back" id="back" type="button"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg>${S.drive ? '주행 모드로' : '목록으로'}</button>
+      <h1>${esc(it.base)} 휴게소${it.dir ? ` <span class="badge" style="font-size:.8rem">${esc(it.dir)} 방향</span>` : ''}</h1>
+      <div class="meta"><span>${esc(it.route || '')}</span>${d != null ? `<span>· 여기서 ${distLabel(it, d)}${R.m[it.k]?.min != null ? `, 약 ${R.m[it.k].min}분` : ''}</span>` : ''}${f ? `<span>· ${esc(OIL[f.raw.oilCompany] || f.raw.oilCompany || '')}</span>` : ''}</div>
     </div>
     <div class="body">
-      ${S.fuelErr ? `<div class="banner">주유 가격을 불러오지 못했어요. 새로고침을 눌러 주세요.</div>` : f ? `<div class="fuels">${fuelBox('gas')}${fuelBox('dsl')}${fuelBox('lpg')}</div><p class="note" style="margin-top:4px">${S.loaded.toLocaleTimeString('ko-KR', {hour: '2-digit', minute: '2-digit'})} 기준 · 한국도로공사 제공 가격</p>` : `<div class="empty" style="padding:14px">이 휴게소에는 주유소 정보가 없어요</div>`}
-      <div class="acts">
-        ${nav ? `<a class="act p" href="${esc(nav)}" target="_blank" rel="noopener">카카오맵 길안내</a>` : `<span class="act" style="color:var(--sub)">위치 정보 없음</span>`}
-        ${tel ? `<a class="act" href="tel:${esc(tel.replace(/[^\d-]/g, ''))}">${esc(tel)}</a>` : `<span class="act" style="color:var(--sub)">전화 정보 없음</span>`}
-      </div>
-      ${it.rep ? `<div class="sec"><h2>대표 메뉴</h2><div class="menu"><b>${esc(it.rep.batchMenu)}</b><div class="pr">${esc(String(it.rep.salePrice || '').replace('￦', '') + (/\d$/.test(it.rep.salePrice || '') ? '원' : ''))}</div></div></div>` : ''}
-      <div class="sec"><h2>판매 음식 ${Array.isArray(menu) && menu.length ? `<small>${menu.length}개</small>` : ''}</h2>${menuHtml}</div>
-      ${fac.length || c?.brand ? `<div class="sec"><h2>편의시설</h2><div class="tags">${fac.map(x => `<span class="tag">${esc(x)}</span>`).join('')}${(c?.brand || '').split(/[|,]/).map(s => s.trim()).filter(Boolean).map(x => `<span class="tag">${esc(x)}</span>`).join('')}${c?.maintenanceYn === 'O' ? '<span class="tag">경정비</span>' : ''}${c?.truckSaYn === 'O' ? '<span class="tag">화물차 라운지</span>' : ''}</div></div>` : ''}
-      ${(c?.svarAddr || f?.raw.svarAddr) ? `<div class="sec"><h2>주소</h2><div class="kv">${esc(c?.svarAddr || f?.raw.svarAddr)}</div></div>` : ''}
+      ${S.fuelErr ? `<div class="banner">기름값을 불러오지 못했어요. 새로고침(↻)을 눌러 주세요.</div>` : f ? `<div class="fuels">${fuelBox('gas')}${fuelBox('dsl')}${fuelBox('lpg')}</div><p class="note" style="margin-top:2px">${timeStr()} 기준 · 한국도로공사 제공 가격</p>` : `<div class="info">이 휴게소에는 주유소가 없어요</div>`}
+      ${navBtns(it)}
+      ${tel ? `<div class="btns"><a class="big" href="tel:${esc(tel.replace(/[^\d-]/g, ''))}">전화 걸기 ${esc(tel)}</a></div>` : ''}
+      ${it.rep ? `<div class="sec"><h2>대표 음식</h2><div class="menu"><b>${esc(it.rep.batchMenu)}</b><div class="pr">${esc(String(it.rep.salePrice || '').replace('￦', '') + (/\d$/.test(it.rep.salePrice || '') ? '원' : ''))}</div></div></div>` : ''}
+      <div class="sec"><h2>파는 음식 ${Array.isArray(menu) && menu.length ? `<small>${menu.length}가지</small>` : ''}</h2>${menuHtml}</div>
+      ${fac.length || brands.length || c?.maintenanceYn === 'O' || c?.truckSaYn === 'O' ? `<div class="sec"><h2>편의시설</h2><div class="tags">${[...fac, ...brands, c?.maintenanceYn === 'O' ? '경정비' : '', c?.truckSaYn === 'O' ? '화물차 쉼터' : ''].filter(Boolean).map(x => `<span class="tag">${esc(x)}</span>`).join('')}</div></div>` : ''}
+      ${addr ? `<div class="sec"><h2>주소</h2><div class="kv">${esc(addr)}</div></div>` : ''}
     </div>`;
   if (menu === undefined) loadMenu(it);
+  if (S.me && !R.m[it.k]) updateRoad([it], () => { if (S.sel?.k === it.k && !S.drive) { const b = $('.body'), y = b?.scrollTop; renderDetail(it); if ($('.body')) $('.body').scrollTop = y; } });
 }
 
 async function loadMenu(it) {
   try {
     const p = it.std ? `&stdRestCd=${encodeURIComponent(it.std)}` : `&stdRestNm=${encodeURIComponent(it.base)}`;
     let list = await getAll('restinfo/restBestfoodList', p);
-    if (it.std) list = list.filter(m => m.stdRestCd === it.std);
-    else list = list.filter(m => keyOf(m.stdRestNm) === it.k);
+    list = it.std ? list.filter(m => m.stdRestCd === it.std) : list.filter(m => keyOf(m.stdRestNm) === it.k);
     const seen = new Set();
     list = list.filter(m => { const k = m.foodNm + '|' + m.foodCost; if (seen.has(k)) return false; seen.add(k); return true; });
     const rank = m => (m.bestfoodyn === 'Y' ? 0 : m.recommendyn === 'Y' ? 1 : m.premiumyn === 'Y' ? 2 : 3);
     S.menus[it.k] = list.sort((a, b) => rank(a) - rank(b) || (+a.foodCost || 0) - (+b.foodCost || 0));
   } catch { S.menus[it.k] = null; }
-  if (S.sel?.k === it.k) { const y = $('.body')?.scrollTop; renderDetail(it); if ($('.body')) $('.body').scrollTop = y; }
+  if (S.sel?.k === it.k && !S.drive) { const b = $('.body'), y = b?.scrollTop; renderDetail(it); if ($('.body')) $('.body').scrollTop = y; }
 }
 
 function open(it) {
-  S.sel = it; setH('62vh'); render();
-  if (it.lat != null) map.flyTo({center: [it.lng, it.lat], zoom: Math.max(map.getZoom(), 11), padding: {top: 120, bottom: innerHeight * .62, left: 0, right: 0}, duration: 600});
+  if (S.drive) stopDrive(true);
+  S.sel = it; setH('64vh'); render();
+  if (it.lat != null) map.flyTo({center: [it.lng, it.lat], zoom: Math.max(map.getZoom(), 11), padding: {top: 200, bottom: innerHeight * .64, left: 0, right: 0}, duration: 600});
 }
 
-// events
-$('#view').addEventListener('click', e => {
-  const r = e.target.closest('.row'); if (r) { const it = S.items.find(i => i.k === r.dataset.k); if (it) open(it); return; }
-  const s = e.target.closest('[data-s]'); if (s) { S.sort = s.dataset.s; if (S.sort === 'near' && !S.me) locate(); render(); return; }
-  if (e.target.closest('#back')) { S.sel = null; setH('34vh'); render(); return; }
-  if (e.target.closest('#more')) { S.limit = (S.limit || 60) + 100; renderList(); }
-});
-$('#chips').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return; S.fuel = b.dataset.f; store('fuel', S.fuel);
-  document.querySelectorAll('[data-f]').forEach(x => x.setAttribute('aria-pressed', x === b)); render(); });
-document.querySelectorAll('[data-f]').forEach(x => x.setAttribute('aria-pressed', x.dataset.f === S.fuel));
-$('#route').addEventListener('change', e => { S.route = e.target.value; S.sel = null; S.limit = 60; render();
-  const pts = filtered().filter(i => i.lat != null); if (!pts.length) return;
-  const b = new maplibregl.LngLatBounds(); pts.forEach(i => b.extend([i.lng, i.lat]));
-  map.fitBounds(b, {padding: {top: 150, bottom: innerHeight * .36, left: 40, right: 40}, maxZoom: 11, duration: 600}); });
-let qt; $('#q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value.trim(); S.sel = null; S.limit = 60; setH('62vh'); render(); }, 200); });
-$('#refresh').addEventListener('click', load);
-$('#grab').addEventListener('click', () => { const h = $('#sheet').style.getPropertyValue('--h'); setH(h === '86vh' ? '34vh' : '86vh'); });
-{ let y0 = null, h0 = 0; const g = $('#grab');
-  g.addEventListener('pointerdown', e => { y0 = e.clientY; h0 = $('#sheet').offsetHeight; g.setPointerCapture(e.pointerId); $('#sheet').style.transition = 'none'; });
-  g.addEventListener('pointermove', e => { if (y0 == null) return; const h = Math.min(innerHeight * .9, Math.max(110, h0 + y0 - e.clientY)); $('#sheet').style.setProperty('--h', h + 'px'); });
-  g.addEventListener('pointerup', e => { if (y0 == null) return; $('#sheet').style.transition = ''; const moved = Math.abs(e.clientY - y0) > 8, h = $('#sheet').offsetHeight / innerHeight; y0 = null;
-    if (moved) setH(h > .6 ? '86vh' : h > .25 ? '34vh' : '14vh'); });
+// ---------- 내 위치 · 주행 모드 ----------
+let watchId = null, lastFix = null, wake = null;
+function meMark() {
+  if (!S.me) return;
+  if (!meMarker) {
+    meEl = document.createElement('div'); meEl.className = 'me';
+    meEl.innerHTML = '<div class="halo"></div><div class="core"><svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M12 2 20 21 12 17 4 21z"/></svg></div><div class="lbl">내 위치</div>';
+    meMarker = new maplibregl.Marker({element: meEl, anchor: 'center'}).setLngLat([S.me[1], S.me[0]]).addTo(map);
+    meEl.parentElement && (meEl.style.zIndex = 5);
+  } else meMarker.setLngLat([S.me[1], S.me[0]]);
+  meEl.classList.toggle('dir', S.heading != null);
+  meEl.querySelector('.core svg').style.transform = `rotate(${S.heading || 0}deg)`;
+}
+function onPos(p) {
+  const cur = [p.coords.latitude, p.coords.longitude];
+  S.speed = p.coords.speed != null && p.coords.speed >= 0 ? p.coords.speed * 3.6 : null;
+  if (p.coords.heading != null && !isNaN(p.coords.heading) && (S.speed ?? 0) > 8) S.heading = p.coords.heading;
+  else if (lastFix && distTo({lat: cur[0], lng: cur[1]}, lastFix) > 0.05) S.heading = bearing(lastFix, cur);
+  if (!lastFix || distTo({lat: cur[0], lng: cur[1]}, lastFix) > 0.05) lastFix = cur;
+  S.me = cur; S.acc = p.coords.accuracy; S.fixAt = Date.now(); meMark();
 }
 function locate() {
-  if (!navigator.geolocation) return;
-  $('#locate').classList.add('on');
+  if (!navigator.geolocation) { toast('이 휴대폰에서는 위치를 확인할 수 없어요'); return; }
+  toast('내 위치를 찾고 있어요…');
   navigator.geolocation.getCurrentPosition(p => {
-    S.me = [p.coords.latitude, p.coords.longitude];
-    if (meMarker) meMarker.remove();
-    const el = document.createElement('div'); el.className = 'me';
-    meMarker = new maplibregl.Marker({element: el}).setLngLat([S.me[1], S.me[0]]).addTo(map);
-    map.flyTo({center: [S.me[1], S.me[0]], zoom: 10, padding: {top: 120, bottom: innerHeight * .34, left: 0, right: 0}, duration: 600}); S.sort = 'near'; render();
-  }, () => { $('#locate').classList.remove('on'); }, {enableHighAccuracy: true, timeout: 10000, maximumAge: 60000});
+    onPos(p); S.sort = 'near';
+    map.flyTo({center: [S.me[1], S.me[0]], zoom: 10, padding: {top: 200, bottom: innerHeight * .42, left: 0, right: 0}, duration: 700});
+    $('#toast').style.display = 'none'; render();
+  }, err => toast(err.code === 1 ? '위치 사용이 꺼져 있어요. 휴대폰 설정에서 이 앱(또는 브라우저)의 위치를 허용해 주세요.' : '위치를 찾지 못했어요. 잠시 후 다시 눌러 주세요.'),
+  {enableHighAccuracy: true, timeout: 15000, maximumAge: 0});
 }
+async function startDrive() {
+  if (!navigator.geolocation) { toast('이 휴대폰에서는 위치를 확인할 수 없어요'); return; }
+  S.drive = true; S.follow = true; S.sel = null; setH('48vh');
+  $('#drive').classList.add('on'); $('#drive').lastChild.textContent = '주행 끝내기';
+  try { wake = await navigator.wakeLock?.request('screen'); } catch {}
+  watchId = navigator.geolocation.watchPosition(p => {
+    onPos(p);
+    if (S.follow) map.easeTo({center: [S.me[1], S.me[0]], zoom: Math.max(map.getZoom(), 10.5), padding: {top: 200, bottom: innerHeight * .48, left: 0, right: 0}, duration: 800});
+    renderDrive();
+  }, err => { toast(err.code === 1 ? '위치 사용이 꺼져 있어요. 휴대폰 설정에서 위치를 허용해 주세요.' : '위치를 찾는 중이에요…'); if (err.code === 1) stopDrive(); },
+  {enableHighAccuracy: true, timeout: 20000, maximumAge: 0});
+  render();
+}
+// GPS가 30초 넘게 안 바뀌면 화면에 경고 (오래된 위치로 주유소를 잘못 안내하지 않도록)
+setInterval(() => { if (S.drive) renderDrive(); }, 15000);
+function stopDrive(silent) {
+  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  watchId = null; S.drive = false; try { wake?.release(); } catch {} wake = null;
+  $('#drive').classList.remove('on'); $('#drive').lastChild.textContent = '주행 모드';
+  if (!silent) { setH('40vh'); render(); }
+}
+document.addEventListener('visibilitychange', async () => { if (S.drive && document.visibilityState === 'visible') { try { wake = await navigator.wakeLock?.request('screen'); } catch {} } });
+
+// 주행 모드: 주유소만. 앞쪽(진행 방향 ±70°)과, 방향과 상관없이 가까운 주유소를 함께 보여줘 놓치는 곳이 없게 함
+const sellsFuel = it => it.fuel && (S.fuelErr || it.fuel[S.fuel].st !== 'na');
+// 휴게소 이름의 방향(예: 기흥(부산)) → 그 도시 쪽으로 가는 차로. 내 진행 방향과 비교해 반대편 차로 주유소를 구분
+const CITY = {강릉:[37.75,128.88],공주:[36.45,127.12],광양:[34.94,127.7],구리:[37.59,127.13],기장:[35.24,129.22],남이:[36.6,127.42],논산:[36.19,127.1],당진:[36.89,126.63],대구:[35.87,128.6],대전:[36.35,127.38],동탄:[37.2,127.07],동해:[37.52,129.11],목포:[34.81,126.39],무안:[34.99,126.48],봉담:[37.22,126.95],부산:[35.18,129.08],삼척:[37.45,129.17],상주:[36.41,128.16],새만금:[35.8,126.55],서부산:[35.15,128.95],서울:[37.57,126.98],서천:[36.08,126.69],세종:[36.48,127.29],속초:[38.2,128.59],순천:[34.95,127.49],양양:[38.08,128.62],양평:[37.49,127.49],영덕:[36.41,129.37],영암:[34.8,126.7],영천:[35.97,128.94],완주:[35.9,127.16],울산:[35.54,129.31],원주:[37.34,127.92],익산:[35.95,126.96],인천:[37.46,126.71],일산:[37.66,126.77],장수:[35.65,127.52],전주:[35.82,127.15],제천:[37.13,128.19],창원:[35.23,128.68],천안:[36.81,127.11],청원:[36.64,127.49],청주:[36.64,127.49],춘천:[37.88,127.73],통영:[34.85,128.43],판교:[37.39,127.11],평택:[36.99,127.11],포천:[37.89,127.2],포항:[36.02,129.34],하남:[37.54,127.21],함양:[35.52,127.72]};
+function dirMatch(it) {   // true: 내 방향, false: 반대편 차로, null: 판단 불가(그대로 보여줌)
+  if (S.heading == null || !it.dir || it.lat == null) return null;
+  const c = it.dir === '광주' ? (it.lat > 36.8 ? [37.43, 127.26] : [35.16, 126.85]) : CITY[it.dir];
+  if (!c || distTo(it, c) < 20) return null;
+  return Math.abs(((bearing([it.lat, it.lng], c) - S.heading) + 540) % 360 - 180) <= 90;
+}
+function driveLists() {
+  if (!S.me) return {ahead: [], near: [], opp: []};
+  const all = S.items.filter(it => it.lat != null && sellsFuel(it)).map(it => ({it, d: distTo(it), m: dirMatch(it)})).sort((x, y) => x.d - y.d);
+  const isAhead = x => S.heading == null ? true : (x.d < 0.5 || Math.abs(((bearing(S.me, [x.it.lat, x.it.lng]) - S.heading) + 540) % 360 - 180) <= 70);
+  const ahead = all.filter(x => x.d <= 150 && x.m !== false && isAhead(x)).slice(0, 6);
+  const near = S.heading == null ? [] : all.filter(x => x.d <= 30 && x.m !== false && !ahead.includes(x)).slice(0, 4);
+  const opp = S.heading == null ? [] : all.filter(x => x.d <= 30 && x.m === false).slice(0, 6);
+  return {ahead, near, opp};
+}
+const alerted = new Set();
+function driveCard(x, cls, mn) {
+  const v = pv(x.it);
+  return `<div class="drv ${cls} ${v != null && v === mn ? 'cheapest' : ''}">
+    <div class="t"><b>${esc(x.it.base)}${x.it.dir ? `<span class="badge">${esc(x.it.dir)} 방향</span>` : ''}</b><span class="km">${distLabel(x.it, x.d)}</span></div>
+    ${R.m[x.it.k]?.min != null ? `<div class="kv">약 ${R.m[x.it.k].min}분 걸려요</div>` : ''}
+    <div class="p2"><span>${esc(x.it.route || '')}${v != null && v === mn ? ' · <b style="font-size:.85rem;color:var(--cheap)">앞쪽에서 가장 쌈</b>' : ''}</span>${v != null ? `<b>${won(v)}</b>` : `<span>${priceRight(x.it)}</span>`}</div>
+    <div class="btns two"><a class="big tmap" href="${esc(tmapUrl(x.it))}">T맵 길안내</a><button class="big" type="button" data-k="${esc(x.it.k)}">자세히</button></div></div>`;
+}
+function renderDrive() {
+  const {ahead, near, opp} = driveLists();
+  updateRoad([...ahead, ...near].map(x => x.it), () => S.drive && renderDrive());
+  const dd = x => roadKm(x.it) ?? x.d;
+  ahead.sort((a, b) => dd(a) - dd(b));
+  const vals = ahead.map(x => pv(x.it)).filter(v => v != null), mn = vals.length ? Math.min(...vals) : null;
+  const stale = S.fixAt && Date.now() - S.fixAt > 30000;
+  const weak = S.acc != null && S.acc > 100;
+  const next = ahead[0];
+  if (next && dd(next) <= 5 && !alerted.has(next.it.k)) { alerted.add(next.it.k); try { navigator.vibrate?.([300, 150, 300]); } catch {} toast(`곧 주유소: ${next.it.base} ${distLabel(next.it, next.d)} 앞`); }
+  const status = !S.me ? '위치를 찾는 중이에요…' : S.heading == null ? '조금 움직이면 가는 방향을 알아내요 (지금은 가까운 순)' : '가는 방향 앞쪽 주유소예요';
+  $('#view').innerHTML = `
+    <div class="head"><h1>${next ? `다음 주유소까지 <span style="color:var(--acc)">${roadKm(next.it) != null ? fmtKm(roadKm(next.it)) : '직선 ' + fmtKm(next.d)}</span>` : '주행 모드'}</h1>
+      <div class="meta"><span>${status}</span>${timeStr() ? `<span>· ${timeStr()} 기준 ${FUEL[S.fuel]} 가격</span>` : ''}</div></div>
+    <div class="body">
+      ${stale ? `<div class="banner">GPS 위치가 30초 넘게 바뀌지 않았어요. 터널이나 지하에서는 위치가 늦을 수 있어요.</div>` : ''}
+      ${weak ? `<div class="banner">GPS 신호가 약해요 (오차 약 ${Math.round(S.acc)}m). 거리가 정확하지 않을 수 있어요.</div>` : ''}
+      <div class="status">${S.acc != null ? `<span>GPS 오차 약 ${Math.round(S.acc)}m</span>` : ''}${S.speed != null ? `<span>속도 ${Math.round(S.speed)}km/h</span>` : ''}<span>${TMAP_KEY ? 'T맵 기준 도로 거리' : '도로 거리(T맵과 조금 다를 수 있음)'}</span>${!S.follow ? `<button class="big p" id="refollow" type="button" style="min-height:40px;font-size:.85rem;padding:0 14px">내 위치 따라가기</button>` : ''}</div>
+      <div class="info">운전 중에는 화면을 만지지 마세요. 동승자가 쓰거나 정차 중에 확인해 주세요.</div>
+      ${S.fuelErr ? `<div class="banner">기름값을 불러오지 못했어요. 주유소 위치는 보여드려요. 새로고침(↻)을 눌러 주세요.</div>` : ''}
+      ${ahead.map((x, i) => driveCard(x, i === 0 ? 'first' : '', mn)).join('') || (S.me ? '<div class="empty">150km 안에 앞쪽 주유소가 없어요</div>' : '<div class="empty">위치 사용을 허용하면 앞쪽 주유소를 알려드려요</div>')}
+      ${near.length ? `<div class="sec" style="margin-top:6px"><h2>근처 다른 주유소 <small>다른 고속도로일 수 있어요</small></h2></div>${near.map(x => driveCard(x, '', -1)).join('')}` : ''}
+      ${opp.length ? `<details class="sec"><summary style="font-weight:800;min-height:44px;display:flex;align-items:center">반대편 차로 주유소 ${opp.length}곳 (지금 방향에선 못 들어가요)</summary>${opp.map(x => `<div class="kv" style="padding:6px 0">${esc(x.it.base)} (${esc(x.it.dir)} 방향) · ${fmtKm(x.d)} · ${pv(x.it) != null ? won(pv(x.it)) : '–'}</div>`).join('')}</details>` : ''}
+    </div>`;
+}
+
+// ---------- 이벤트 ----------
+$('#view').addEventListener('click', e => {
+  const k = e.target.closest('[data-k]'); if (k) { const it = S.items.find(i => i.k === k.dataset.k); if (it) open(it); return; }
+  const s = e.target.closest('[data-s]'); if (s) { S.sort = s.dataset.s; if (S.sort === 'near' && !S.me) locate(); render(); return; }
+  if (e.target.closest('#back')) { S.sel = null; setH('40vh'); render(); return; }
+  if (e.target.closest('#more')) { S.limit += 100; renderList(); return; }
+  if (e.target.closest('#refollow')) { S.follow = true; if (S.me) map.easeTo({center: [S.me[1], S.me[0]], duration: 600}); renderDrive(); }
+});
+const syncFuel = () => document.querySelectorAll('[data-f]').forEach(x => x.setAttribute('aria-pressed', x.dataset.f === S.fuel));
+$('#fuelsel').addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (!b) return; S.fuel = b.dataset.f; store('fuel', S.fuel); syncFuel(); render(); });
+syncFuel();
+$('#route').addEventListener('change', e => { S.route = e.target.value; S.sel = null; S.limit = 60; if (S.drive) stopDrive(true); setH('40vh'); render();
+  const pts = filtered().filter(i => i.lat != null); if (!pts.length) return;
+  const b = new maplibregl.LngLatBounds(); pts.forEach(i => b.extend([i.lng, i.lat]));
+  map.fitBounds(b, {padding: {top: 220, bottom: innerHeight * .42, left: 40, right: 40}, maxZoom: 11, duration: 600}); });
+let qt; $('#q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value.trim(); S.sel = null; S.limit = 60; if (S.drive) stopDrive(true); setH('64vh'); render(); }, 250); });
+$('#refresh').addEventListener('click', () => { load(); toast('새 가격을 불러오고 있어요'); });
+$('#bigtxt').addEventListener('click', () => { const on = document.documentElement.classList.toggle('big'); store('big', on); toast(on ? '글자를 크게 했어요' : '글자를 보통 크기로 했어요'); });
 $('#locate').addEventListener('click', locate);
-setH('34vh'); load();
+$('#drive').addEventListener('click', () => S.drive ? stopDrive() : startDrive());
+$('#grab').addEventListener('click', () => setH(S.h === '86vh' ? '40vh' : '86vh'));
+{ let y0 = null, h0 = 0; const g = $('#grab');
+  g.addEventListener('pointerdown', e => { y0 = e.clientY; h0 = $('#sheet').offsetHeight; g.setPointerCapture(e.pointerId); $('#sheet').style.transition = 'none'; });
+  g.addEventListener('pointermove', e => { if (y0 == null) return; const h = Math.min(innerHeight * .9, Math.max(120, h0 + y0 - e.clientY)); $('#sheet').style.setProperty('--h', h + 'px'); });
+  g.addEventListener('pointerup', e => { if (y0 == null) return; $('#sheet').style.transition = ''; const moved = Math.abs(e.clientY - y0) > 8, h = $('#sheet').offsetHeight / innerHeight; y0 = null;
+    if (moved) setH(h > .62 ? '86vh' : h > .27 ? '40vh' : '18vh'); });
+}
+// 사용 방법 · 설치 안내
+const showOv = id => $(id).classList.add('show'), hideOv = id => $(id).classList.remove('show');
+$('#help').addEventListener('click', () => showOv('#helpov'));
+$('#helpok').addEventListener('click', () => { hideOv('#helpov'); store('seen', 1); });
+$('#helpinstall').addEventListener('click', () => { hideOv('#helpov'); store('seen', 1); showInstall(); });
+$('#instok').addEventListener('click', () => hideOv('#instov'));
+document.querySelectorAll('.ov').forEach(o => o.addEventListener('click', e => { if (e.target === o) { o.classList.remove('show'); store('seen', 1); } }));
+let deferred = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; $('#install').hidden = false; });
+addEventListener('appinstalled', () => { $('#install').hidden = true; toast('설치됐어요! 홈 화면의 아이콘으로 여세요'); });
+function showInstall() {
+  if (standalone) { $('#instbody').innerHTML = '<p>이미 휴대폰에 설치되어 있어요. 홈 화면의 <b>휴게소 주유</b> 아이콘을 누르면 열려요.</p>'; showOv('#instov'); return; }
+  if (deferred) { deferred.prompt(); deferred.userChoice.finally(() => { deferred = null; }); return; }
+  $('#instbody').innerHTML = isIOS
+    ? `<ol><li><span>사파리(Safari)로 이 화면을 여세요.</span></li><li><span>화면 아래 가운데 <span class="k">공유 버튼(네모에 위쪽 화살표)</span>을 누르세요.</span></li><li><span>아래로 내려서 <span class="k">홈 화면에 추가</span>를 누르세요.</span></li><li><span>오른쪽 위 <span class="k">추가</span>를 누르면 끝이에요.</span></li></ol>`
+    : `<ol><li><span>크롬(Chrome)으로 이 화면을 여세요.</span></li><li><span>오른쪽 위 <span class="k">⋮</span> (점 세 개)를 누르세요.</span></li><li><span><span class="k">홈 화면에 추가</span> 또는 <span class="k">앱 설치</span>를 누르세요.</span></li><li><span><span class="k">설치</span>를 누르면 홈 화면에 아이콘이 생겨요.</span></li></ol>`;
+  showOv('#instov');
+}
+$('#install').addEventListener('click', showInstall);
+if (!standalone && isIOS) $('#install').hidden = false;
+if (!store('seen')) showOv('#helpov');
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+
+setH('40vh'); load();
 setInterval(() => { if (document.visibilityState === 'visible') load(); }, 10 * 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && S.loaded && Date.now() - S.loaded > 5 * 60 * 1000) load(); });
 }
